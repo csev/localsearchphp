@@ -87,9 +87,6 @@ $start = "http://localhost:8888/localsearchphp/test";
 // Seed the queue with the starting URL
 first_page($pdo, $start);
 
-// Crawl the website
-$crawled = array();
-
 $maxpages = 2;
 while ($maxpages-- > 0 ) {
     // Get an unretrieved page from database
