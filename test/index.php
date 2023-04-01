@@ -9,6 +9,7 @@
 <ul>
 <li><a href="page1.php">Page one</a></li>
 <li><a href="page2.php">Page two</a></li>
+<li><a href="pagebad.php">Page bad</a></li>
 </ul>
 </nav>
 </p>
