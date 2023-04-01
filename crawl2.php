@@ -25,7 +25,7 @@
  * You still are selecting retrieved as null in the first select
  * Your answer is still wrong.
  * Chuck: I decided to work on the code and ask smaller questions
- * Can SQLite do on dpulicate key update?
+ * Can SQLite do on duplicate key update?
  */
 
 $bodyHashes = array();
@@ -35,13 +35,13 @@ $pdo = new PDO('sqlite:crawler.db');
 $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
 // Create tables if they don't exist
-$pdo->exec('CREATE TABLE IF NOT EXISTS pages (id INTEGER PRIMARY KEY, url TEXT UNIQUE, title TEXT, body TEXT, hash TEXT, retrieved_date INTEGER)');
+$pdo->exec('CREATE TABLE IF NOT EXISTS pages (id INTEGER PRIMARY KEY, url TEXT UNIQUE, title TEXT, body TEXT, hash TEXT, code INTEGER, retrieved_date INTEGER)');
 $pdo->exec('CREATE INDEX IF NOT EXISTS idx_pages_retrieved_date ON pages (retrieved_date)');
 
 // Function to insert a page into the database
-function insert_page($pdo, $url, $title, $body, $hash, $retrieved_date) {
-    $stmt = $pdo->prepare('INSERT OR REPLACE INTO pages (url, title, body, hash, retrieved_date) VALUES (?, ?, ?, ?, ?)');
-    $stmt->execute([$url, $title, $body, $hash, $retrieved_date]);
+function insert_page($pdo, $url, $title, $body, $hash, $error, $retrieved_date) {
+    $stmt = $pdo->prepare('INSERT OR REPLACE INTO pages (url, title, body, hash, code, retrieved_date) VALUES (?, ?, ?, ?, ?, ?)');
+    $stmt->execute([$url, $title, $body, $hash, $error, $retrieved_date]);
 }
 
 // Function to check whether a page already exists in the database
@@ -84,9 +84,7 @@ function extractContent($contents) {
 $start = "http://localhost:8888/localsearchphp/test";
 
 // Seed the queue with the starting URL
-$now = time();
-// insert_page($pdo, $start, null, null, null, $now);
-insert_page($pdo, $start, null, null, null, null);
+insert_page($pdo, $start, null, null, null, null, null);
 
 // Crawl the website
 $crawled = array();
@@ -98,7 +96,6 @@ while ($maxpages-- > 0 ) {
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!$row) {
         echo("----- no unretrieved pages...\n");
-        // Get the oldest page
         $stmt = $pdo->query('SELECT * FROM pages ORDER BY retrieved_date ASC LIMIT 1');
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
         if (!$row) {
@@ -109,12 +106,14 @@ while ($maxpages-- > 0 ) {
 
     $url = $row['url'];
     echo("----- URL $url ------\n");
-    $html = file_get_contents($url);
+    $html = @file_get_contents($url);
 
     // Check HTTP response code
     $response_code = substr($http_response_header[0], 9, 3);
     if (strpos('23', $response_code[0]) === false) {
         // Handle error (e.g. non-2xx/3xx response code)
+        $now = time();
+        insert_page($pdo, $url, null, null, null, null, $now);
         continue;
     }
 
@@ -137,15 +136,11 @@ while ($maxpages-- > 0 ) {
     $body = preg_replace('/\n(\s*\n)+/', "\n", $body);
     $hash = md5($body);
 
-    /*
-    // Check whether page already exists
-    if (page_exists($pdo, $url)) {
-        continue;
-    }
-     */
+    echo("--- Retrieved $url $body\n");
 
-    // Insert page into database
-    insert_page($pdo, $url, $title, $body, $hash, $now);
+    // Insert or update page in database
+    $now = time();
+    insert_page($pdo, $url, $title, $body, $hash, null, $now);
 
     // Reload the document.
     @$doc->loadHTML($html);
@@ -165,10 +160,10 @@ while ($maxpages-- > 0 ) {
         echo("----- href $href $abs_url\n");
 
         if ( ! page_exists($pdo, $abs_url) ) {
-            echo("----- Inserting new page $abs_url\n");
-            insert_page($pdo, $abs_url, null, null, null, null);
+            echo("----- Inserting new link $abs_url\n");
+            insert_page($pdo, $abs_url, null, null, null, null, null);
         } else {
-            echo("----- Page already in database$abs_url\n");
+            echo("----- Link already in database $abs_url\n");
         }
     }
 }
