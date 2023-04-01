@@ -35,13 +35,41 @@ $pdo = new PDO('sqlite:crawler.db');
 $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
 // Create tables if they don't exist
-$pdo->exec('CREATE TABLE IF NOT EXISTS pages (id INTEGER PRIMARY KEY, url TEXT UNIQUE, title TEXT, body TEXT, hash TEXT UNIQUE, code INTEGER, retrieved_date INTEGER)');
+$pdo->exec('CREATE TABLE IF NOT EXISTS pages (id INTEGER PRIMARY KEY, url TEXT UNIQUE, title TEXT, body TEXT, words TEXT, hash TEXT UNIQUE, code INTEGER, retrieved_date INTEGER)');
 $pdo->exec('CREATE INDEX IF NOT EXISTS idx_pages_retrieved_date ON pages (retrieved_date)');
+
+    $stopwords = array(
+        'a', 'about', 'actually', 'almost', 'also', 'although', 'always', 'am', 'an', 'and',
+        'any', 'are', 'as', 'at', 'be', 'became', 'become', 'but', 'by', 'can', 'could', 'did',
+        'do', 'does', 'each', 'either', 'else', 'for', 'from', 'had', 'has', 'have', 'hence',
+        'how', 'i', 'if', 'in', 'is', 'it', 'its', 'just', 'may', 'maybe', 'me', 'might', 'mine',
+        'must', 'my', 'mine', 'must', 'my', 'neither', 'nor', 'not', 'of', 'oh', 'ok', 'when',
+        'where', 'whereas', 'wherever', 'whenever', 'whether', 'which', 'while', 'who', 'whom',
+        'whoever', 'whose', 'why', 'will', 'with', 'within', 'without', 'would', 'yes', 'yet',
+        'you', 'your'
+    );
 
 // Function to insert a page into the database
 function insert_page($pdo, $url, $title, $body, $hash, $error, $retrieved_date) {
-    $stmt = $pdo->prepare('INSERT OR REPLACE INTO pages (url, title, body, hash, code, retrieved_date) VALUES (?, ?, ?, ?, ?, ?)');
-    $stmt->execute([$url, $title, $body, $hash, $error, $retrieved_date]);
+    global $stopwords;
+    $words = null;
+    if ( is_string($body) && strlen($body) > 0 ) {
+        $string = strtolower(preg_replace("/[^A-Za-z0-9 ]/", '', $body));
+        $words = array();
+        $pieces = explode(' ', $string);
+        foreach($pieces as $piece) {
+            if ( strlen($piece) < 3 ) continue;
+            if ( in_array($piece, $stopwords) ) continue;
+            if ( in_array($piece, $words) ) continue;
+            array_push($words, $piece);
+        }
+        $words = implode(' ', $words);
+        sort($words);
+        if ( strlen($body) > 200 ) $body = substr($body, 0, 200) . " ...";
+    }
+
+    $stmt = $pdo->prepare('INSERT OR REPLACE INTO pages (url, title, body, words, hash, code, retrieved_date) VALUES (?, ?, ?, ?, ?, ?, ?)');
+    $stmt->execute([$url, $title, $body, $words, $hash, $error, $retrieved_date]);
 }
 
 // Function to check whether a page already exists in the database
@@ -172,6 +200,7 @@ while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
     echo "URL: " . $row['url'] . "\n";
     echo "Title: " . $row['title'] . "\n";
     echo "Body: " . $row['body'] . "\n";
+    echo "Words: " . $row['words'] . "\n";
     echo "Code: " . $row['code'] . "\n";
     echo "Hash: " . $row['hash'] . "\n";
     echo "Retrieved Date: " . date('Y-m-d H:i:s', $row['retrieved_date']) . "\n";
