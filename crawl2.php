@@ -40,7 +40,7 @@ $pdo->exec('CREATE INDEX IF NOT EXISTS idx_pages_retrieved_date ON pages (retrie
 
 // Function to insert a page into the database
 function insert_page($pdo, $url, $title, $body, $hash, $retrieved_date) {
-    $stmt = $pdo->prepare('INSERT OR IGNORE INTO pages (url, title, body, hash, retrieved_date) VALUES (?, ?, ?, ?, ?)');
+    $stmt = $pdo->prepare('INSERT OR REPLACE INTO pages (url, title, body, hash, retrieved_date) VALUES (?, ?, ?, ?, ?)');
     $stmt->execute([$url, $title, $body, $hash, $retrieved_date]);
 }
 
@@ -91,14 +91,20 @@ insert_page($pdo, $start, null, null, null, null);
 // Crawl the website
 $crawled = array();
 
-while (true) {
-    // Get oldest unretrieved page from database
+$maxpages = 2;
+while ($maxpages-- > 0 ) {
+    // Get an unretrieved page from database
     $stmt = $pdo->query('SELECT * FROM pages WHERE retrieved_date IS NULL ORDER BY id ASC LIMIT 1');
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!$row) {
         echo("----- no unretrieved pages...\n");
-        // No more unretrieved pages
-        break;
+        // Get the oldest page
+        $stmt = $pdo->query('SELECT * FROM pages ORDER BY retrieved_date ASC LIMIT 1');
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row) {
+            echo("----- no old pages...\n");
+            break;
+        }
     }
 
     $url = $row['url'];
@@ -131,19 +137,23 @@ while (true) {
     $body = preg_replace('/\n(\s*\n)+/', "\n", $body);
     $hash = md5($body);
 
+    /*
     // Check whether page already exists
     if (page_exists($pdo, $url)) {
         continue;
     }
+     */
 
     // Insert page into database
     insert_page($pdo, $url, $title, $body, $hash, $now);
 
+    // Reload the document.
+    @$doc->loadHTML($html);
     // Add links to queue
-    $links = $dom->getElementsByTagName('a');
+    $links = $doc->getElementsByTagName('a');
     foreach ($links as $link) {
         $href = $link->getAttribute('href');
-       if(strpos($href, $start) === 0) {
+        if(strpos($href, $start) === 0) {
            $abs_url = $href;
         } else {
             if(strpos($href, '/') === 0) {
@@ -152,11 +162,13 @@ while (true) {
                 $abs_url = $start . '/' . $href;
             }
         }
+        echo("----- href $href $abs_url\n");
 
-        $abs_url = get_absolute_url($url, $href);
-        if (filter_link($abs_url) && !in_array($abs_url, $crawled)) {
+        if ( ! page_exists($pdo, $abs_url) ) {
+            echo("----- Inserting new page $abs_url\n");
             insert_page($pdo, $abs_url, null, null, null, null);
-            $crawled[] = $abs_url;
+        } else {
+            echo("----- Page already in database$abs_url\n");
         }
     }
 }
