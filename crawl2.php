@@ -35,7 +35,7 @@ $pdo = new PDO('sqlite:crawler.db');
 $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
 // Create tables if they don't exist
-$pdo->exec('CREATE TABLE IF NOT EXISTS pages (id INTEGER PRIMARY KEY, url TEXT UNIQUE, title TEXT, body TEXT, hash TEXT, code INTEGER, retrieved_date INTEGER)');
+$pdo->exec('CREATE TABLE IF NOT EXISTS pages (id INTEGER PRIMARY KEY, url TEXT UNIQUE, title TEXT, body TEXT, hash TEXT UNIQUE, code INTEGER, retrieved_date INTEGER)');
 $pdo->exec('CREATE INDEX IF NOT EXISTS idx_pages_retrieved_date ON pages (retrieved_date)');
 
 // Function to insert a page into the database
@@ -113,7 +113,7 @@ while ($maxpages-- > 0 ) {
     if (strpos('23', $response_code[0]) === false) {
         // Handle error (e.g. non-2xx/3xx response code)
         $now = time();
-        insert_page($pdo, $url, null, null, null, null, $now);
+        insert_page($pdo, $url, null, null, null, $response_code, $now);
         continue;
     }
 
@@ -157,24 +157,23 @@ while ($maxpages-- > 0 ) {
                 $abs_url = $start . '/' . $href;
             }
         }
-        echo("----- href $href $abs_url\n");
 
         if ( ! page_exists($pdo, $abs_url) ) {
-            echo("----- Inserting new link $abs_url\n");
             insert_page($pdo, $abs_url, null, null, null, null, null);
-        } else {
-            echo("----- Link already in database $abs_url\n");
         }
     }
 }
 
 
 // Dump all pages in the table
-$stmt = $pdo->query('SELECT * FROM pages');
+echo("\n");
+$stmt = $pdo->query('SELECT * FROM pages ORDER BY retrieved_date DESC');
 while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
     echo "URL: " . $row['url'] . "\n";
     echo "Title: " . $row['title'] . "\n";
     echo "Body: " . $row['body'] . "\n";
+    echo "Code: " . $row['code'] . "\n";
+    echo "Hash: " . $row['hash'] . "\n";
     echo "Retrieved Date: " . date('Y-m-d H:i:s', $row['retrieved_date']) . "\n";
     echo "\n";
 }
