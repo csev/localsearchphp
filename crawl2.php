@@ -28,8 +28,6 @@
  * Can SQLite do on duplicate key update?
  */
 
-$bodyHashes = array();
-
 // Connect to SQLite database
 $pdo = new PDO('sqlite:crawler.db');
 $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
@@ -82,36 +80,6 @@ function page_exists($pdo, $url) {
     $stmt = $pdo->prepare('SELECT COUNT(*) FROM pages WHERE url = ?');
     $stmt->execute([$url]);
     return $stmt->fetchColumn() > 0;
-}
-
-// Function to extract the contents of a webpage using DOMDocument
-function extractContent($contents) {
-    global $bodyHashes;
-    $doc = new DOMDocument();
-    @$doc->loadHTML($contents);
-    $title = $doc->getElementsByTagName('title')->item(0)->textContent;
-
-    // Remove the nav tag and its contents from the document
-    $nav = $doc->getElementsByTagName('nav')->item(0);
-    if($nav) {
-        $nav->parentNode->removeChild($nav);
-    }
-
-    $body = $doc->getElementsByTagName('body')->item(0)->textContent;
-
-    // Remove multiple spaces and blank lines from the title and body
-    $title = preg_replace('/\s+/', ' ', $title);
-    $body = preg_replace('/\s+/', ' ', $body);
-    $body = preg_replace('/\n(\s*\n)+/', "\n", $body);
-
-    // Generate a hash of the body content and check if it already exists
-    $bodyHash = md5($body);
-    if(!in_array($bodyHash, $bodyHashes)) {
-        $bodyHashes[] = $bodyHash;
-        return array('title' => $title, 'body' => $body);
-    } else {
-        return false;
-    }
 }
 
 $start = "http://localhost:8888/localsearchphp/test";
