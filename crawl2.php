@@ -12,12 +12,12 @@
  * What are good places to add error checking
  * How do I get the error code like 404 from file_get_contents
  * How to check if $http_response_header is a 2xx or 3xx
+ * (Switched to crawl2.php)
  * Can I store the pages in an SQLITE database so this crawler is restartable?
  * Can you also store the queue of unretrieved urls in the database
  * Can you store the queue in the pages table and add a retrieved date so we can do the crawl over and over and re-crawl older pages?
  * Add some code to the end to read and dump all the pages in the table
  * Make it so the loop has a maximum number of times to execute
- * (Switched to crawl2 since we were going to refactor a lot)
  */
 
 $bodyHashes = array();
