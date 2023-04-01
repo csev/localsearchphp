@@ -1,7 +1,10 @@
 <?php
 class MySpider {
 
-    public string $start = "http://localhost:8888/py4e";
+    public string $start = "http://localhost:8888/localsearchphp/test";
+    //
+    // public string $alternate = "https://www.localsearchphp.com/";
+    public ?string $alternate = null;
 
     public array $stopwords = array(
         'a', 'about', 'actually', 'almost', 'also', 'although', 'always', 'am', 'an', 'and',
@@ -99,10 +102,15 @@ class MySpider {
             @$doc->loadHTML($html);
             $title = $doc->getElementsByTagName('title')->item(0)->textContent;
 
-            // Remove the nav tag and its contents from the document
+            // Remove the nav and footer tags from the document
             $nav = $doc->getElementsByTagName('nav')->item(0);
             if($nav) {
                 $nav->parentNode->removeChild($nav);
+            }
+
+            $footer = $doc->getElementsByTagName('footer')->item(0);
+            if($footer) {
+                $footer->parentNode->removeChild($footer);
             }
         
             $body = $doc->getElementsByTagName('body')->item(0)->textContent;
@@ -127,6 +135,8 @@ class MySpider {
                 $href = $link->getAttribute('href');
                 if(strpos($href, $this->start) === 0) {
                     $abs_url = $href;
+                } else if(is_string($this->alternate) && strpos($href, $this->alternate) === 0) {
+                    $abs_url = str_replace($this->alternate, $this->start, $href);
                 } else if ( strpos($href, 'http://') === 0 ) {
                     continue;
                 } else if ( strpos($href, 'https://') === 0 ) {
