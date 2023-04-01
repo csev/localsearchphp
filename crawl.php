@@ -9,6 +9,12 @@
  * How do I exclude the contents of the nav tag from the body content
  * How do I made sure not to add the same body content twice?
  * How about if I just store the hash of the body content in the body array?
+ * What are good places to add error checking
+ * How do I get the error code like 404 from file_get_contents
+ * How to check if $http_response_header is a 2xx or 3xx
+ * (Switched to crawl2 to use the database)
+ * Can I store the pages in an SQLITE database so this crawler is restartable?
+ *  ...
  */
 
 $bodyHashes = array();
@@ -50,7 +56,15 @@ $pages = array();
 function crawl($url) {
     global $pages, $start;
     echo("---------url $url ------------\n");
-    $contents = file_get_contents($url);
+    $contents = @file_get_contents($url);
+
+    // Check HTTP response code
+    $response_code = substr($http_response_header[0], 9, 3);
+    if (strpos('23', $response_code[0]) === false) {
+        echo("---------error $url $http_response_header[0] ------------\n");
+        echo($contents);
+        return;
+    }
     $page = extractContent($contents);
     if ( is_array($page) ) $pages[$url] = $page;
     $doc = new DOMDocument();
