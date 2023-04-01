@@ -49,6 +49,11 @@ $pdo->exec('CREATE INDEX IF NOT EXISTS idx_pages_retrieved_date ON pages (retrie
         'you', 'your'
     );
 
+function first_page($pdo, $url) {
+    $stmt = $pdo->prepare('INSERT OR IGNORE INTO pages (url) VALUES (?)');
+    $stmt->execute([$url]);
+}
+
 // Function to insert a page into the database
 function insert_page($pdo, $url, $title, $body, $hash, $error, $retrieved_date) {
     global $stopwords;
@@ -63,8 +68,8 @@ function insert_page($pdo, $url, $title, $body, $hash, $error, $retrieved_date) 
             if ( in_array($piece, $words) ) continue;
             array_push($words, $piece);
         }
-        $words = implode(' ', $words);
         sort($words);
+        $words = implode(' ', $words);
         if ( strlen($body) > 200 ) $body = substr($body, 0, 200) . " ...";
     }
 
@@ -112,7 +117,7 @@ function extractContent($contents) {
 $start = "http://localhost:8888/localsearchphp/test";
 
 // Seed the queue with the starting URL
-insert_page($pdo, $start, null, null, null, null, null);
+first_page($pdo, $start);
 
 // Crawl the website
 $crawled = array();
@@ -123,11 +128,20 @@ while ($maxpages-- > 0 ) {
     $stmt = $pdo->query('SELECT * FROM pages WHERE retrieved_date IS NULL ORDER BY id ASC LIMIT 1');
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!$row) {
-        echo("----- no unretrieved pages...\n");
         $stmt = $pdo->query('SELECT * FROM pages ORDER BY retrieved_date ASC LIMIT 1');
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
         if (!$row) {
-            echo("----- no old pages...\n");
+            break;
+        }
+    }
+
+    $retrieved_date = $row['retrieved_date'];
+    if ( $retrieved_date == null || ! is_string($retrieved_date) ) {
+        // Should retrieve
+    } else {
+        $diff = time() - $retrieved_date;
+        if ( $diff < 60 ) {
+            echo("Too soon\n");
             break;
         }
     }
@@ -178,6 +192,10 @@ while ($maxpages-- > 0 ) {
         $href = $link->getAttribute('href');
         if(strpos($href, $start) === 0) {
            $abs_url = $href;
+        } else if ( strpos($href, 'http://') === 0 ) {
+            continue;
+        } else if ( strpos($href, 'https://') === 0 ) {
+            continue;
         } else {
             if(strpos($href, '/') === 0) {
                 $abs_url = $start . $href;
@@ -191,7 +209,6 @@ while ($maxpages-- > 0 ) {
         }
     }
 }
-
 
 // Dump all pages in the table
 echo("\n");

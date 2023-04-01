@@ -10,6 +10,7 @@
 <li><a href="page1.php">Page one</a></li>
 <li><a href="page2.php">Page two</a></li>
 <li><a href="pagebad.php">Page bad</a></li>
+<li><a href="https://online.dr-chuck.com/">Dr. Chuck Online</a></li>
 </ul>
 </nav>
 </p>
