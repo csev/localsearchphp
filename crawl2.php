@@ -17,7 +17,15 @@
  * Can you also store the queue of unretrieved urls in the database
  * Can you store the queue in the pages table and add a retrieved date so we can do the crawl over and over and re-crawl older pages?
  * Add some code to the end to read and dump all the pages in the table
- * Make it so the loop has a maximum number of times to execute
+ * How do I insert the initial url with on on duplicate key ignore
+ * Is "INSERT IGNORE" valid SQLITE syntax?
+ * If I insert the initial page with $now it never is retrieved - how would you make it so the first url is retrieved and the actual loop is properly primed?
+ * Your answer was wrong.
+ * ChatGPT:  Could you please clarify which part of my answer was wrong so I can provide a more accurate response?
+ * You still are selecting retrieved as null in the first select
+ * Your answer is still wrong.
+ * Chuck: I decided to work on the code and ask smaller questions
+ * Can SQLite do on dpulicate key update?
  */
 
 $bodyHashes = array();
@@ -32,7 +40,7 @@ $pdo->exec('CREATE INDEX IF NOT EXISTS idx_pages_retrieved_date ON pages (retrie
 
 // Function to insert a page into the database
 function insert_page($pdo, $url, $title, $body, $hash, $retrieved_date) {
-    $stmt = $pdo->prepare('INSERT INTO pages (url, title, body, hash, retrieved_date) VALUES (?, ?, ?, ?, ?)');
+    $stmt = $pdo->prepare('INSERT OR IGNORE INTO pages (url, title, body, hash, retrieved_date) VALUES (?, ?, ?, ?, ?)');
     $stmt->execute([$url, $title, $body, $hash, $retrieved_date]);
 }
 
@@ -73,47 +81,12 @@ function extractContent($contents) {
     }
 }
 
-// Array to store all pages and their contents
-$pages = array();
-
-// Function to crawl the website and store the contents of each page
-function crawl($url) {
-    global $pages, $start;
-    // echo("---------url $url ------------\n");
-
-    $contents = @file_get_contents($url);
-
-    // Check HTTP response code
-    $response_code = substr($http_response_header[0], 9, 3);
-    if (strpos('23', $response_code[0]) === false) {
-        echo("---------error $url $http_response_header[0] ------------\n");
-        echo($contents);
-        return;
-    }
-    $page = extractContent($contents);
-    if ( is_array($page) ) $pages[$url] = $page;
-    $doc = new DOMDocument();
-    @$doc->loadHTML($contents);
-    foreach($doc->getElementsByTagName('a') as $link) {
-        $href = $link->getAttribute('href');
-        if(strpos($href, $start) === 0) {
-            if ( ! array_key_exists($href, $pages) ) crawl($href);
-        } else {
-            if(strpos($href, '/') === 0) {
-                $fullUrl = $start . $href;
-            } else {
-                $fullUrl = $start . '/' . $href;
-            }
-            if ( ! array_key_exists($fullUrl, $pages) ) crawl($fullUrl);
-        }
-    }
-}
-
 $start = "http://localhost:8888/localsearchphp/test";
 
 // Seed the queue with the starting URL
 $now = time();
-insert_page($pdo, $start, null, null, null, $now);
+// insert_page($pdo, $start, null, null, null, $now);
+insert_page($pdo, $start, null, null, null, null);
 
 // Crawl the website
 $crawled = array();
@@ -123,11 +96,13 @@ while (true) {
     $stmt = $pdo->query('SELECT * FROM pages WHERE retrieved_date IS NULL ORDER BY id ASC LIMIT 1');
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!$row) {
+        echo("----- no unretrieved pages...\n");
         // No more unretrieved pages
         break;
     }
 
     $url = $row['url'];
+    echo("----- URL $url ------\n");
     $html = file_get_contents($url);
 
     // Check HTTP response code
@@ -138,10 +113,22 @@ while (true) {
     }
 
     // Parse HTML
-    $dom = new DOMDocument();
-    @$dom->loadHTML($html);
-    $title = $dom->getElementsByTagName('title')->item(0)->nodeValue;
-    $body = $dom->getElementsByTagName('body')->item(0)->nodeValue;
+    $doc = new DOMDocument();
+    @$doc->loadHTML($html);
+    $title = $doc->getElementsByTagName('title')->item(0)->textContent;
+
+    // Remove the nav tag and its contents from the document
+    $nav = $doc->getElementsByTagName('nav')->item(0);
+    if($nav) {
+        $nav->parentNode->removeChild($nav);
+    }
+
+    $body = $doc->getElementsByTagName('body')->item(0)->textContent;
+
+    // Remove multiple spaces and blank lines from the title and body
+    $title = preg_replace('/\s+/', ' ', $title);
+    $body = preg_replace('/\s+/', ' ', $body);
+    $body = preg_replace('/\n(\s*\n)+/', "\n", $body);
     $hash = md5($body);
 
     // Check whether page already exists
@@ -156,6 +143,16 @@ while (true) {
     $links = $dom->getElementsByTagName('a');
     foreach ($links as $link) {
         $href = $link->getAttribute('href');
+       if(strpos($href, $start) === 0) {
+           $abs_url = $href;
+        } else {
+            if(strpos($href, '/') === 0) {
+                $abs_url = $start . $href;
+            } else {
+                $abs_url = $start . '/' . $href;
+            }
+        }
+
         $abs_url = get_absolute_url($url, $href);
         if (filter_link($abs_url) && !in_array($abs_url, $crawled)) {
             insert_page($pdo, $abs_url, null, null, null, null);
