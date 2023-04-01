@@ -1,20 +1,46 @@
 <?php
 
 /**
- * I used ChahatGPT to give me a basic outline of this file - here are my questions
+ * I used ChatGPT to give me a basic outline of this file - here are my questions
  *
  * I want to write a simple PHP search engine that crawls a site it is embedded in and supports simple searches of the site.
- * could I use DOMDocument and loadHTML instead?
+ * Could I use DOMDocument and loadHTML instead?
+ * How would I remove multiple spaces and blank lines from the body and title text
+ * How do I exclude the contents of the nav tag from the body content
+ * How do I made sure not to add the same body content twice?
+ * How about if I just store the hash of the body content in the body array?
  */
 
+$bodyHashes = array();
+
 // Function to extract the contents of a webpage using DOMDocument
-function extractContent($url) {
+function extractContent($contents) {
+    global $bodyHashes;
     $doc = new DOMDocument();
-    $contents = file_get_contents($url);
     @$doc->loadHTML($contents);
     $title = $doc->getElementsByTagName('title')->item(0)->textContent;
+
+    // Remove the nav tag and its contents from the document
+    $nav = $doc->getElementsByTagName('nav')->item(0);
+    if($nav) {
+        $nav->parentNode->removeChild($nav);
+    }
+
     $body = $doc->getElementsByTagName('body')->item(0)->textContent;
-    return array('title' => $title, 'body' => $body);
+
+    // Remove multiple spaces and blank lines from the title and body
+    $title = preg_replace('/\s+/', ' ', $title);
+    $body = preg_replace('/\s+/', ' ', $body);
+    $body = preg_replace('/\n(\s*\n)+/', "\n", $body);
+
+    // Generate a hash of the body content and check if it already exists
+    $bodyHash = md5($body);
+    if(!in_array($bodyHash, $bodyHashes)) {
+        $bodyHashes[] = $bodyHash;
+        return array('title' => $title, 'body' => $body);
+    } else {
+        return false;
+    }
 }
 
 // Array to store all pages and their contents
@@ -24,10 +50,11 @@ $pages = array();
 function crawl($url) {
     global $pages, $start;
     echo("---------url $url ------------\n");
-    $content = extractContent($url);
-    $pages[$url] = $content;
+    $contents = file_get_contents($url);
+    $page = extractContent($contents);
+    if ( is_array($page) ) $pages[$url] = $page;
     $doc = new DOMDocument();
-    @$doc->loadHTML(file_get_contents($url));
+    @$doc->loadHTML($contents);
     foreach($doc->getElementsByTagName('a') as $link) {
         $href = $link->getAttribute('href');
         if(strpos($href, $start) === 0) {
