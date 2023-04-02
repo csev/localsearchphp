@@ -92,6 +92,9 @@ Future enhancements can include using MySQL and putting something in `crawl.php`
 to limit the nuber of crawls per minute overall using APC cache, to handle
 cases like hundreds of folks are sitting on your main page for hours and hours.
 
+Both the `crawl.php` and `search.php` report an ellapsed time in seconds
+that allows you to see if your search activities are taking longer than expected.
+
 Using ChatGPT
 -------------
 
