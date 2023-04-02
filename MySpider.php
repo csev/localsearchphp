@@ -24,7 +24,7 @@ class MySpider {
         'you', 'your'
     );
 
-    function __construct() {
+    function __construct($start) {
         // Connect to SQLite database
         $this->pdo = new PDO('sqlite:crawler.db');
         $this->pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
@@ -33,11 +33,11 @@ class MySpider {
         $this->pdo->exec('CREATE TABLE IF NOT EXISTS pages (id INTEGER PRIMARY KEY, url TEXT UNIQUE, title TEXT, body TEXT, words TEXT, hash TEXT UNIQUE, code INTEGER, retrieved_date INTEGER)');
         $this->pdo->exec('CREATE INDEX IF NOT EXISTS idx_pages_retrieved_date ON pages (retrieved_date)');
         $this->pdo->exec('CREATE INDEX IF NOT EXISTS idx_pages_url ON pages (url)');
-    }
 
-    public function first_page($url) {
+        // Insure first page is bootstrapped
+        $this->start = $start;
         $stmt = $this->pdo->prepare('INSERT OR IGNORE INTO pages (url) VALUES (?)');
-        $stmt->execute([$url]);
+        $stmt->execute([$this->start]);
     }
 
     // Function to insert a page into the database

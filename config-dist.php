@@ -1,5 +1,7 @@
 <?php
 
+$spider_crawl_max_pages = 5;
+
 // If you know your server start enter it here
 $spider_start = "https://online.dr-chuck.com/";
 

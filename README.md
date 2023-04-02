@@ -3,6 +3,14 @@ Local Search PHP
 
 A simple PHP search engine that crawls a site it is embedded in and supports simple searches of the site.
 
+This only looks at the web pages on your site through a crawl process like any other web search engine.
+The crawl process is embedded into the pages of the site with AJAX.   The crawl process and the search
+process return JSON so you can use it any way you like and format it in a way that fits with the design
+of your site.
+
+
+This does not require a separate crawl process and used SQLite on the local disk for its page index database.
+
 
 Using ChatGPT
 -------------

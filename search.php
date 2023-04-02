@@ -6,9 +6,8 @@ require_once "MySpider.php";
 
 header('Content-Type: application/json; charset=utf-8');
 
-$spider = new MySpider();
-$spider->start = $spider_start;
-$spider->first_page($spider->start);
+$spider = new MySpider($spider_start);
+
 $results = $spider->search($_GET['query'], 0, 10);
 echo(json_encode($results, JSON_PRETTY_PRINT));
 
