@@ -1,10 +1,15 @@
 <?php
 class MySpider {
 
+    public ?object $pdo = null;
+
     public string $start = "http://localhost:8888/localsearchphp/test";
-    //
+
     // public string $alternate = "https://www.localsearchphp.com/";
     public ?string $alternate = null;
+
+    // Tags where we don't want text
+    public array $stoptags = array('nav', 'footer');
 
     public array $stopwords = array(
         'a', 'about', 'actually', 'almost', 'also', 'although', 'always', 'am', 'an', 'and',
@@ -23,8 +28,9 @@ class MySpider {
         $this->pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
         // Create tables if they don't exist
-        $this->pdo->exec('CREATE TABLE IF NOT EXISTS pages (id INTEGER PRIMARY KEY, url TEXT UNIQUE, title TEXT, body TEXT, words TEXT, hash TEXT UNIQUE, code INTEGER, retrieved_date INTEGER)');
+        $this->pdo->exec('CREATE TABLE IF NOT EXISTS pages (id INTEGER PRIMARY KEY, url TEXT UNIQUE, title TEXT, body TEXT, words TEXT, hash TEXT, code INTEGER, retrieved_date INTEGER)');
         $this->pdo->exec('CREATE INDEX IF NOT EXISTS idx_pages_retrieved_date ON pages (retrieved_date)');
+        $this->pdo->exec('CREATE INDEX IF NOT EXISTS idx_pages_url ON pages (url)');
     }
 
     public function first_page($url) {
@@ -45,8 +51,12 @@ class MySpider {
                 if ( in_array($piece, $words) ) continue;
                 array_push($words, $piece);
             }
-            sort($words);
-            $words = implode(' ', $words);
+            if ( count($words) > 1 ) {
+                sort($words);
+                $words = ' ' . implode(' ', $words) . ' ';
+            } else {
+                $words = null;
+            }
             if ( strlen($body) > 200 ) $body = substr($body, 0, 200) . " ...";
         }
 
@@ -60,6 +70,7 @@ class MySpider {
         $stmt->execute([$url]);
         return $stmt->fetchColumn() > 0;
     }
+
     public function crawl($maxpages) {
         while ($maxpages-- > 0 ) {
             // Get an unretrieved page from database
@@ -83,11 +94,11 @@ class MySpider {
                     break;
                 }
             }
-        
+
             $url = $row['url'];
-            echo("----- URL $url ------\n");
+            // echo("----- URL $url ------\n");
             $html = @file_get_contents($url);
-        
+
             // Check HTTP response code
             $response_code = substr($http_response_header[0], 9, 3);
             if (strpos('23', $response_code[0]) === false) {
@@ -96,33 +107,30 @@ class MySpider {
                 $this->insert_page($url, null, null, null, $response_code, $now);
                 continue;
             }
-        
+
             // Parse HTML
             $doc = new DOMDocument();
             @$doc->loadHTML($html);
             $title = $doc->getElementsByTagName('title')->item(0)->textContent;
 
             // Remove the nav and footer tags from the document
-            $nav = $doc->getElementsByTagName('nav')->item(0);
-            if($nav) {
-                $nav->parentNode->removeChild($nav);
+            foreach ($this->stoptags as $stoptag ) {
+                $stopelem = $doc->getElementsByTagName($stoptag)->item(0);
+                if($stopelem) {
+                    $stopelem->parentNode->removeChild($stopelem);
+                }
             }
 
-            $footer = $doc->getElementsByTagName('footer')->item(0);
-            if($footer) {
-                $footer->parentNode->removeChild($footer);
-            }
-        
             $body = $doc->getElementsByTagName('body')->item(0)->textContent;
-        
+
             // Remove multiple spaces and blank lines from the title and body
             $title = preg_replace('/\s+/', ' ', $title);
             $body = preg_replace('/\s+/', ' ', $body);
             $body = preg_replace('/\n(\s*\n)+/', "\n", $body);
             $hash = md5($body);
 
-            echo("--- Retrieved $url $body\n");
-        
+            // echo("--- Retrieved $url $body\n");
+
             // Insert or update page in database
             $now = time();
             $this->insert_page($url, $title, $body, $hash, null, $now);
@@ -156,11 +164,43 @@ class MySpider {
         }
     }
 
+    public function search($search, $start, $count) {
+        $hashes = array();
+        $retval = array();
+        $search = strtolower(preg_replace("/[^A-Za-z0-9 ]/", '', $search));
+        $words = explode(' ',$search);
+        $where = null;
+        if ( count($words) > 0 ) {
+            $where = '';
+            foreach($words as $word) {
+                if ( strlen($where) > 0 ) $where .= ' OR ';
+                $where .= "words LIKE '% " . $word . " %'";
+            }
+            $where = ' AND  (' . $where . ') ';
+        }
+        $sql = 'SELECT * FROM pages WHERE code IS NULL AND retrieved_date IS NOT NULL '.$where.' ORDER BY id';
+        // echo("--- sql $sql\n");
+        $stmt = $this->pdo->query($sql);
+
+        while ( $row = $stmt->fetch(PDO::FETCH_ASSOC) ) {
+            // Skip duplicate pages
+            if ( in_array($row['hash'], $hashes) ) continue;
+            array_push($hashes, $row['hash']);
+
+            // Handle paging
+            if ( $start-- > 0 ) continue;
+            array_push($retval, $row);
+            if ( $count-- < 0 ) return $retval;
+        }
+        return $retval;
+    }
+
     // Dump all pages in the table
     public function dump() {
         echo("\n");
         $stmt = $this->pdo->query('SELECT * FROM pages ORDER BY retrieved_date DESC');
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            echo "ID: " . $row['id'] . "\n";
             echo "URL: " . $row['url'] . "\n";
             echo "Title: " . $row['title'] . "\n";
             echo "Body: " . $row['body'] . "\n";
@@ -182,7 +222,10 @@ $spider = new MySpider();
 $spider->start = "http://localhost:8888/localsearchphp/test";
 $spider->first_page($spider->start);
 $spider->crawl($maxpages);
-$spider->dump($maxpages);
+$spider->dump();
+$results = $spider->search('first second', 0, 10);
+echo(json_encode($results, JSON_PRETTY_PRINT));
+echo("\n");
 
 
 
