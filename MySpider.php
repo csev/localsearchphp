@@ -28,7 +28,7 @@ class MySpider {
         $this->pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
         // Create tables if they don't exist
-        $this->pdo->exec('CREATE TABLE IF NOT EXISTS pages (id INTEGER PRIMARY KEY, url TEXT UNIQUE, title TEXT, body TEXT, words TEXT, hash TEXT, code INTEGER, retrieved_date INTEGER)');
+        $this->pdo->exec('CREATE TABLE IF NOT EXISTS pages (id INTEGER PRIMARY KEY, url TEXT UNIQUE, title TEXT, body TEXT, words TEXT, hash TEXT UNIQUE, code INTEGER, retrieved_date INTEGER)');
         $this->pdo->exec('CREATE INDEX IF NOT EXISTS idx_pages_retrieved_date ON pages (retrieved_date)');
         $this->pdo->exec('CREATE INDEX IF NOT EXISTS idx_pages_url ON pages (url)');
     }
@@ -60,8 +60,24 @@ class MySpider {
             if ( strlen($body) > 200 ) $body = substr($body, 0, 200) . " ...";
         }
 
-        $stmt = $this->pdo->prepare('INSERT OR REPLACE INTO pages (url, title, body, words, hash, code, retrieved_date) VALUES (?, ?, ?, ?, ?, ?, ?)');
-        $stmt->execute([$url, $title, $body, $words, $hash, $error, $retrieved_date]);
+        $sql = 'INSERT OR REPLACE INTO pages (url, title, body, words, hash, code, retrieved_date) 
+                         VALUES (:url,  :title, :body, :words, :hash, :code, :date)
+                ON CONFLICT (url) DO UPDATE SET 
+                    title=excluded.title, body=excluded.body, words=excluded.words,
+                    hash=excluded.hash, code=excluded.code, retrieved_date=excluded.retrieved_date';
+
+        $stmt = $this->pdo->prepare($sql);
+
+        try {
+            $stmt->execute([':url' => $url, ':title' => $title, ':body' => $body, 
+                ':words' => $words, ':hash' => $hash, ':code' => $error, ':date' => $retrieved_date]);
+        // If we have a hash conflict, we have duplicat content at multiple URLs
+        } catch(Exception $e) {
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute([':url' => $url, ':title' => $title, ':body' => $body, 
+                ':words' => $words, ':hash' => null, ':code' => $error, ':date' => $retrieved_date]);
+        }
+
     }
 
     // Function to check whether a page already exists in the database
@@ -165,8 +181,6 @@ class MySpider {
     }
 
     public function search($search, $start, $count) {
-        $hashes = array();
-        $retval = array();
         $search = strtolower(preg_replace("/[^A-Za-z0-9 ]/", '', $search));
         $words = explode(' ',$search);
         $where = null;
@@ -178,21 +192,13 @@ class MySpider {
             }
             $where = ' AND  (' . $where . ') ';
         }
-        $sql = 'SELECT * FROM pages WHERE code IS NULL AND retrieved_date IS NOT NULL '.$where.' ORDER BY id';
-        // echo("--- sql $sql\n");
+        $sql = "SELECT * FROM pages WHERE code IS NULL AND hash IS NOT NULL AND 
+            retrieved_date IS NOT NULL ".$where." ORDER BY id LIMIT $count OFFSET $start";
+
+        echo("--- sql $sql\n");
         $stmt = $this->pdo->query($sql);
 
-        while ( $row = $stmt->fetch(PDO::FETCH_ASSOC) ) {
-            // Skip duplicate pages
-            if ( in_array($row['hash'], $hashes) ) continue;
-            array_push($hashes, $row['hash']);
-
-            // Handle paging
-            if ( $start-- > 0 ) continue;
-            array_push($retval, $row);
-            if ( $count-- < 0 ) return $retval;
-        }
-        return $retval;
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
     // Dump all pages in the table
