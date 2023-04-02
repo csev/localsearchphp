@@ -112,10 +112,10 @@ class MySpider {
         return $stmt->fetchColumn() > 0;
     }
 
-    public function crawl($maxpages) {
+    public function crawl($maxpages, $maxseconds=2) {
         $begin = time();
         $crawled = array();
-        while ($maxpages-- > 0 ) {
+        while ($maxpages-- > 0 && time() <= ($begin+$maxseconds) ) {
             $crawl = array();
             // Get an unretrieved page from database
             $stmt = $this->pdo->query('SELECT * FROM pages WHERE retrieved_date IS NULL ORDER BY id ASC LIMIT 1');
