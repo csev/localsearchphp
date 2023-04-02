@@ -1,10 +1,11 @@
 <?php
 
+if( ! defined('STDIN') ) die('Command line only');
+
+if(is_file("config.php")) { include "config.php"; } else { include "config-dist.php"; }
+
 // Change the start based on where this is checked out locally
 $spider_start = "http://localhost:8888/localsearchphp/test";
-$spider_crawl_max_pages = 2;
-
-if( ! defined('STDIN') ) die('Command line only');
 
 require_once "MySpider.php";
 
