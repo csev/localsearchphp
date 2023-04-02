@@ -2,10 +2,7 @@
 
 if( ! defined('STDIN') ) die('Command line only');
 
-if(is_file("config.php")) { include "config.php"; } else { include "config-dist.php"; }
-
-// Change the start based on where this is checked out locally
-$spider_start = "http://localhost:8888/localsearchphp/test";
+if ( is_file("config.php") ) include("config.php"); else die("Copy config-dist.php to config.php and edit\n");
 
 require_once "MySpider.php";
 

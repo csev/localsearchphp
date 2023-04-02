@@ -8,9 +8,89 @@ The crawl process is embedded into the pages of the site with AJAX.   The crawl 
 process return JSON so you can use it any way you like and format it in a way that fits with the design
 of your site.
 
+Quick test
+----------
 
-This does not require a separate crawl process and used SQLite on the local disk for its page index database.
+First check this repo into your hosting environment in a top level folder.  Then go into the folder and:
 
+    cp config-dist.php config.php
+
+Then edit the `config.php` file to point to the URL where your site can be crawled and then run the test.
+Instructions are contained in the `config-dist.php` file.
+
+    php test.php
+
+You can run the `test.php` over and over as it crawls your web site.  You can even set
+`$spider_crawl_max_pages` to a larger number like 100 to fill up your database
+more quickly once things seem to be working.
+
+Restarting the Crawl
+--------------------
+
+To restart the crawl, go into the `localsearchphp` folder and rewmove the `crawler.db`
+file and start things back up using `test.php`. While testing, you might have to restart
+a few times to make suer your configuration is working.
+
+Test the REST Endpoints
+-----------------------
+
+Once `test.php` seems to work, OK you yould be able to hit the REST endpoints as follows:
+
+https://online.dr-chuck.com/localsearchphp/crawl.php
+
+https://online.dr-chuck.com/localsearchphp/search.php?query=tsugi+hopes
+
+Integrating Search into Your Web Site
+-------------------------------------
+
+To cause the crawl to happen, usually you put some JavaScript on the main page that waits a few seconds
+and then makes an AJAX request to the crawler endpoint.  Something like this in your top page should
+do the trick.
+
+    <script>
+    function doLocalSearchPHPCrawl() {
+        fetch('localsearchphp/crawl.php')
+            .then(response => response.json())
+            .then(result => {
+            setTimeout(() => { doCrawl(); }, 20000);
+            })
+        .catch(err => console.log(err))
+    }
+
+    setTimeout(() => { doLocalSearchPHPCrawl(); }, 5000);
+    </script>
+
+This waits five seconds after page load and does a background crawl.  After that every 20
+seconds it does another crawl.
+
+You could also make a shell script that you scheduled in `cron` to `curl` or `wget` the
+`crawl.php` URL from time to time.   Make suer that script runs as the correct user so the
+permissions on the `crawler.db` file is correct to the web server process can write to the
+file.
+
+You can build a UI that takes search terms, calls one of your pages that
+calls the search endpoint and formats the results you get from JSON.
+
+https://online.dr-chuck.com/localsearchphp/search.php?query=tsugi+hopes
+
+Performance
+-----------
+
+This uses an SQLite database stored on the local drive of your web server.  As long as the
+dis is not a networked drive (i.e. like an NFS mount) this should be pretty quick as long as
+the size of your sites is in the few thousands of pages. Larger sites might need to use
+MySQL - which is an easily added feature.
+
+In general - the database does not store all the content.  It stores a snippet
+of the page and the unique words in each page after running through a stopword
+list.  It scans the words column with a LIKE clause.
+
+With the speed of disk drives and the disk caching in most Linux servers, both
+the crawling and searching should be a pretty light load on your server.
+
+Future enhancements can include using MySQL and putting something in `crawl.php`
+to limit the nuber of crawls per minute overall using APC cache, to handle
+cases like hundreds of folks are sitting on your main page for hours and hours.
 
 Using ChatGPT
 -------------
