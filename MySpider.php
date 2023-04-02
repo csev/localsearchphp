@@ -8,6 +8,8 @@ class MySpider {
     // public string $alternate = "https://www.localsearchphp.com/";
     public ?string $alternate = null;
 
+    public int $successive = 30;
+
     // Tags where we don't want text
     public array $stoptags = array('nav', 'footer');
 
@@ -39,7 +41,7 @@ class MySpider {
     }
 
     // Function to insert a page into the database
-    public function insert_page($url, $title, $body, $hash, $error, $retrieved_date) {
+    public function insert_page($url, $title, $body, $hash, $error, $retrieved_date, &$crawled=null) {
         $words = null;
         if ( is_string($body) && strlen($body) > 0 ) {
             $string = strtolower(preg_replace("/[^A-Za-z0-9 ]/", '', $body));
@@ -68,14 +70,37 @@ class MySpider {
 
         $stmt = $this->pdo->prepare($sql);
 
+        $values = [':url' => $url, ':title' => $title, ':body' => $body,
+            ':words' => $words, ':hash' => $hash, ':code' => $error, ':date' => $retrieved_date];
+
         try {
-            $stmt->execute([':url' => $url, ':title' => $title, ':body' => $body, 
-                ':words' => $words, ':hash' => $hash, ':code' => $error, ':date' => $retrieved_date]);
+            $stmt->execute($values);
+            $crawl = array();
+            if ( $values[':body'] === null ) {
+                $crawl['values'] = array(':url' => $values[':url']);
+                $crawl["status"] = "Link insert/update";
+            } else {
+                $crawl["values"] = $values;
+                $crawl["status"] = "Page insert/update";
+            }
+            if ( is_array($crawled) ) array_push($crawled, $crawl);
+
         // If we have a hash conflict, we have duplicat content at multiple URLs
         } catch(Exception $e) {
+
             $stmt = $this->pdo->prepare($sql);
-            $stmt->execute([':url' => $url, ':title' => $title, ':body' => $body, 
-                ':words' => $words, ':hash' => null, ':code' => $error, ':date' => $retrieved_date]);
+            $values[':hash'] = null;
+            $stmt->execute($values);
+
+            $crawl = array();
+            $crawl["values"] = $values;
+            $crawl["status"] = "Duplicate page insert/update";
+            if ( is_array($crawled) ) array_push($crawled, $crawl);
+        } catch(Exception $e) {
+            $crawl = array($values);
+            $crawl["status"] = "Insert fail: " . $e;
+            $crawl["sql"] = $sql;
+            if ( is_array($crawled) ) array_push($crawled, $crawl);
         }
 
     }
@@ -88,7 +113,10 @@ class MySpider {
     }
 
     public function crawl($maxpages) {
+        $begin = time();
+        $crawled = array();
         while ($maxpages-- > 0 ) {
+            $crawl = array();
             // Get an unretrieved page from database
             $stmt = $this->pdo->query('SELECT * FROM pages WHERE retrieved_date IS NULL ORDER BY id ASC LIMIT 1');
             $row = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -96,7 +124,11 @@ class MySpider {
                 $stmt = $this->pdo->query('SELECT * FROM pages ORDER BY retrieved_date ASC LIMIT 1');
                 $row = $stmt->fetch(PDO::FETCH_ASSOC);
                 if (!$row) {
-                    break;
+                    $retval = array();
+                    $retval["status"] = "No pages to crawl";
+                    if (count($crawled) > 0 ) $retval["crawled"] = $crawled;
+                    $retval["ellapsed"] = time() - $begin;
+                    return $retval;
                 }
             }
 
@@ -104,10 +136,13 @@ class MySpider {
             if ( $retrieved_date == null || ! is_string($retrieved_date) ) {
                 // Should retrieve
             } else {
-                $diff = time() - $retrieved_date;
-                if ( $diff < 30 ) {
-                    echo("Too soon\n");
-                    break;
+                $delta = time() - $retrieved_date;
+                if ( $delta < $this->successive ) {
+                    $retval = array();
+                    $retval["status"] = "Oldest page must be at least $this->successive seconds old to re-crawl, actual=$delta";
+                    if (count($crawled) > 0 ) $retval["crawled"] = $crawled;
+                    $retval["ellapsed"] = time() - $begin;
+                    return $retval;
                 }
             }
 
@@ -116,12 +151,18 @@ class MySpider {
             $html = @file_get_contents($url);
 
             // Check HTTP response code
-            $response_code = substr($http_response_header[0], 9, 3);
-            if (strpos('23', $response_code[0]) === false) {
-                // Handle error (e.g. non-2xx/3xx response code)
-                $now = time();
-                $this->insert_page($url, null, null, null, $response_code, $now);
-                continue;
+            if ( ! isset($http_response_header) || ! is_array($http_response_header) ) {
+                    $crawl["status"] = "Error retrieving " . $url;
+                    array_push($crawled, $crawl);
+                    continue;
+            } else {
+                $response_code = substr($http_response_header[0], 9, 3);
+                if (strpos('23', $response_code[0]) === false) {
+                    // Handle error (e.g. non-2xx/3xx response code)
+                    $now = time();
+                    $this->insert_page($url, null, null, null, $response_code, $now, $crawled);
+                    continue;
+                }
             }
 
             // Parse HTML
@@ -149,7 +190,7 @@ class MySpider {
 
             // Insert or update page in database
             $now = time();
-            $this->insert_page($url, $title, $body, $hash, null, $now);
+            $this->insert_page($url, $title, $body, $hash, null, $now, $crawled);
 
             // Reload the document.
             @$doc->loadHTML($html);
@@ -174,13 +215,19 @@ class MySpider {
                 }
 
                 if ( ! $this->page_exists($abs_url) ) {
-                    $this->insert_page($abs_url, null, null, null, null, null);
+                    $this->insert_page($abs_url, null, null, null, null, null, $crawled);
                 }
             }
         }
+        $retval = array();
+        $retval["status"] = "Crawl success";
+        if (count($crawled) > 0 ) $retval["crawled"] = $crawled;
+        $retval["ellapsed"] = time() - $begin;
+        return $retval;
     }
 
     public function search($search, $start, $count) {
+        $begin = time();
         $search = strtolower(preg_replace("/[^A-Za-z0-9 ]/", '', $search));
         $words = explode(' ',$search);
         $where = null;
@@ -195,10 +242,14 @@ class MySpider {
         $sql = "SELECT * FROM pages WHERE code IS NULL AND hash IS NOT NULL AND 
             retrieved_date IS NOT NULL ".$where." ORDER BY id LIMIT $count OFFSET $start";
 
-        echo("--- sql $sql\n");
         $stmt = $this->pdo->query($sql);
 
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $retval = array();
+        $retval["rows"] = $rows;
+        $retval["sql"] = $sql;
+        $retval["ellapsed"] = time() - $begin;
+        return $retval;
     }
 
     // Dump all pages in the table
